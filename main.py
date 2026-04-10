@@ -83,11 +83,44 @@ def cmd_transcribe(args):
     print(f"\n[完成] 文案保存到: {output_path}")
 
 
+def cmd_subtitle(args):
+    """直接获取视频字幕（不下载视频）"""
+    from subtitle_fetcher import fetch_subtitles, save_subtitles
+
+    bv = _normalize_bv(args.bv)
+    print(f"[字幕] 正在获取 {bv} 的字幕...")
+
+    try:
+        sub_data = fetch_subtitles(bv)
+    except Exception as e:
+        print(f"[错误] 获取字幕失败: {e}")
+        sys.exit(1)
+
+    if not sub_data["has_subtitle"]:
+        print("[提示] 该视频没有字幕，需要下载视频进行语音识别")
+        print("       请去掉 --subtitle 参数重新运行")
+        sys.exit(1)
+
+    output_path = save_subtitles(sub_data, bv)
+    print(f"\n{'='*50}")
+    print(f"文案已保存到: {output_path}")
+
+    with open(output_path, "r", encoding="utf-8") as f:
+        content = f.read()
+        if content.strip():
+            print(f"\n--- 文案预览 ---")
+            print(content[:500])
+            if len(content) > 500:
+                print("...(更多内容请查看文件)")
+    print(f"{'='*50}")
+
+
 def cmd_full(args):
     """完整流程：下载 → 提取音频 → 转录"""
     from downloader import download_video, download_all_pages, get_video_info
     from audio_processor import process_audio
     from transcriber import load_model, transcribe_and_save
+    from subtitle_fetcher import fetch_subtitles, save_subtitles
 
     config = get_config()
 
@@ -99,13 +132,36 @@ def cmd_full(args):
 
     # 2. 下载视频
     print(f"\n[步骤 2/4] 下载视频...")
-    if args.page:
-        video_dirs = []
-        for p in args.page:
-            path = download_video(args.bv, page=p)
-            video_dirs.append(path)
-    else:
-        video_dirs = download_all_pages(args.bv)
+    video_dirs = []
+    try:
+        if args.page:
+            for p in args.page:
+                path = download_video(args.bv, page=p)
+                video_dirs.append(path)
+        else:
+            video_dirs = download_all_pages(args.bv)
+    except Exception as e:
+        error_msg = str(e)
+        print(f"\n[错误] 下载失败: {error_msg}")
+
+        # 尝试字幕兜底
+        print(f"\n[字幕] 正在检查视频字幕...")
+        try:
+            sub_data = fetch_subtitles(args.bv)
+            if sub_data["has_subtitle"]:
+                print(f"[字幕] 发现字幕！直接获取文案...")
+                bv_clean = _normalize_bv(args.bv)
+                output_path = save_subtitles(sub_data, bv_clean)
+                print(f"\n{'='*50}")
+                print(f"文案已保存到: {output_path}")
+                print(f"{'='*50}")
+                return
+        except Exception:
+            pass
+
+        print(f"\n[提示] 该视频需要登录才能下载，且无可用字幕。")
+        print(f"  请导出 Cookie 后重试（参见 README）")
+        sys.exit(1)
 
     # 3. 加载 Whisper 模型
     print(f"\n[步骤 3/4] 加载语音识别模型...")
@@ -170,6 +226,7 @@ def main():
   python main.py BV1xx411c7mD --page 1-3   # 下载第1到3P
   python main.py BV1xx411c7mD --model medium  # 使用medium模型
   python main.py --info BV1xx411c7mD       # 查看视频信息
+  python main.py --subtitle BV1xx411c7mD   # 直接获取字幕（不下载视频）
   python main.py --download BV1xx411c7mD   # 仅下载视频
   python main.py --transcribe ./downloads/video/BVxxx  # 仅转录
         """,
@@ -179,6 +236,7 @@ def main():
     parser.add_argument("--info", action="store_true", help="仅查看视频信息")
     parser.add_argument("--download", action="store_true", help="仅下载视频（不转录）")
     parser.add_argument("--transcribe", metavar="VIDEO_DIR", help="仅转录指定目录的视频")
+    parser.add_argument("--subtitle", action="store_true", help="直接获取视频字幕（不下载视频）")
     parser.add_argument("--page", type=str, help="指定下载的分P，如 '1' 或 '1,3' 或 '1-3'")
     parser.add_argument("--model", type=str, help="Whisper 模型大小 (tiny/small/medium/large)")
     parser.add_argument("--prompt", type=str, help="Whisper 转录提示词")
@@ -227,6 +285,14 @@ def main():
         cmd_transcribe(args)
         return
 
+    # 直接获取字幕
+    if args.subtitle:
+        if not args.bv:
+            print("[错误] 请提供BV号")
+            sys.exit(1)
+        cmd_subtitle(args)
+        return
+
     # 完整流程
     if not args.bv:
         # 交互模式
@@ -256,6 +322,7 @@ def interactive_mode():
 
     # 查看信息
     from downloader import get_video_info
+    from subtitle_fetcher import fetch_subtitles, save_subtitles
 
     try:
         info = get_video_info(bv)
@@ -268,6 +335,41 @@ def interactive_mode():
     print(f"  UP主: {info['uploader']}")
     print(f"  时长: {info['duration']:.0f} 秒")
     print(f"  分P数: {info['pages']}")
+
+    # 先检查是否有字幕可以获取
+    print(f"\n[检查] 正在检查视频字幕...")
+    try:
+        sub_data = fetch_subtitles(bv)
+    except Exception as e:
+        print(f"  [字幕] 检查失败: {e}")
+        sub_data = {"has_subtitle": False, "subtitles": {}, "pages": []}
+
+    if sub_data["has_subtitle"]:
+        print(f"  [字幕] 发现字幕！可以直接获取视频文案（无需下载视频）")
+
+        choice = input(f"\n选择获取方式:\n  1. 直接获取字幕文案（快速，不需要下载视频）\n  2. 下载视频 + 语音识别（更准确，耗时较长）\n请选择 (1/2，回车=1): ").strip()
+        if choice != "2":
+            # 直接保存字幕
+            bv_clean = _normalize_bv(bv)
+            output_path = save_subtitles(sub_data, bv_clean)
+
+            print(f"\n{'='*50}")
+            print(f"文案已保存到: {output_path}")
+
+            # 预览
+            with open(output_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                preview = content[:500]
+                print(f"\n--- 文案预览 ---")
+                print(preview)
+                if len(content) > 500:
+                    print("...(更多内容请查看文件)")
+            print(f"{'='*50}")
+            return
+
+    # 没有字幕或用户选择下载视频
+    if not sub_data["has_subtitle"]:
+        print(f"  [字幕] 该视频没有字幕，需要下载视频进行语音识别")
 
     # 选择分P
     pages = None
@@ -293,14 +395,49 @@ def interactive_mode():
 
     # 下载
     print("\n[步骤 1/3] 下载视频...")
-    if pages:
-        video_dirs = []
-        for p in pages:
-            path = download_video(bv, page=p)
-            video_dirs.append(path)
-    else:
-        from downloader import download_all_pages
-        video_dirs = download_all_pages(bv)
+    try:
+        if pages:
+            video_dirs = []
+            for p in pages:
+                path = download_video(bv, page=p)
+                video_dirs.append(path)
+        else:
+            from downloader import download_all_pages
+            video_dirs = download_all_pages(bv)
+    except Exception as e:
+        error_msg = str(e)
+        print(f"\n[错误] 下载失败: {error_msg}")
+
+        # 下载失败，如果有字幕就兜底
+        if sub_data["has_subtitle"]:
+            print(f"\n[提示] 视频下载需要登录，但该视频有字幕，可以直接获取文案！")
+            use_sub = input("是否直接获取字幕文案？(y/n，回车=y): ").strip().lower()
+            if use_sub != "n":
+                bv_clean = _normalize_bv(bv)
+                output_path = save_subtitles(sub_data, bv_clean)
+                print(f"\n{'='*50}")
+                print(f"文案已保存到: {output_path}")
+                with open(output_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    if content.strip():
+                        print(f"\n--- 文案预览 ---")
+                        print(content[:500])
+                        if len(content) > 500:
+                            print("...(更多内容请查看文件)")
+                print(f"{'='*50}")
+                return
+
+        # 没有字幕，提示用户获取 Cookie
+        print(f"\n{'='*50}")
+        print("[提示] 该视频需要登录才能下载，解决方法：")
+        print("  1. 导出浏览器Cookie到 cookies.txt（推荐）")
+        print("     - 安装Chrome插件 'Get cookies.txt LOCALLY'")
+        print("     - 打开 bilibili.com 登录后导出cookies")
+        print("     - 保存为 cookies.txt 到项目目录")
+        print("  2. 在 config.env 中填写 BILIBILI_COOKIE")
+        print(f"{'='*50}")
+
+        sys.exit(1)
 
     # 加载模型
     print("\n[步骤 2/3] 加载模型...")

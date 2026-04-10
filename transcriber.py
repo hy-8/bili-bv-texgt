@@ -9,10 +9,37 @@
 """
 
 import os
+import sys
 from config import get_config
 
 _model = None
 _loaded_model_name = None
+
+
+def _setup_cuda_path():
+    """将 pip 安装的 NVIDIA CUDA 库路径添加到 DLL 搜索路径"""
+    try:
+        nvidia_base = os.path.join(
+            os.path.dirname(sys.executable), "Lib", "site-packages", "nvidia"
+        )
+        if not os.path.isdir(nvidia_base):
+            return
+        for root, dirs, files in os.walk(nvidia_base):
+            if "bin" in root:
+                try:
+                    os.add_dll_directory(root)
+                except Exception:
+                    pass
+                os.environ["PATH"] = root + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        pass
+
+
+# 启动时自动配置 CUDA 路径
+_setup_cuda_path()
+
+# 禁用 Windows symlinks 警告
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 
 def _get_device() -> str:
