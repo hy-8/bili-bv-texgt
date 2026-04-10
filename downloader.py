@@ -69,14 +69,24 @@ def _build_ydl_opts(output_dir: str, cookie: str = None) -> dict:
         "no_warnings": False,
         # 进度钩子
         "progress_hooks": [_download_progress_hook],
+        # 自动重试
+        "retries": 3,
+        "fragment_retries": 3,
     }
 
     # 告诉 yt-dlp ffmpeg 在哪里
     if ffmpeg_loc:
         opts["ffmpeg_location"] = ffmpeg_loc
 
-    if cookie:
-        opts["cookiefile"] = None
+    # Cookie 支持（按优先级）：
+    # 1. cookies.txt 文件（Netscape 格式，手动导出）
+    # 2. config.env 中的原始 Cookie 字符串
+    # 注意：浏览器自动提取在 Windows 上经常失败，建议手动导出 cookies.txt
+    cookie_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+    if os.path.exists(cookie_file):
+        opts["cookiefile"] = cookie_file
+        print("[下载] 使用 cookies.txt 登录")
+    elif cookie:
         opts["http_headers"] = {"Cookie": cookie}
 
     return opts
@@ -120,8 +130,12 @@ def get_video_info(bv_input: str) -> dict:
         "no_warnings": True,
         "skip_download": True,
     }
+
     cookie = config.get("BILIBILI_COOKIE", "")
-    if cookie:
+    cookie_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+    if os.path.exists(cookie_file):
+        opts["cookiefile"] = cookie_file
+    elif cookie:
         opts["http_headers"] = {"Cookie": cookie}
 
     with yt_dlp.YoutubeDL(opts) as ydl:
