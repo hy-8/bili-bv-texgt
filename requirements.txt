@@ -1,0 +1,9 @@
+# bili2text-new 依赖
+# 核心功能
+yt-dlp>=2024.0.0
+faster-whisper>=1.0.0
+
+# 注意: 还需要系统安装 ffmpeg
+# Windows: winget install ffmpeg 或 scoop install ffmpeg
+# Mac: brew install ffmpeg
+# Linux: sudo apt install ffmpeg
