@@ -76,13 +76,20 @@ def load_model(model_name: str = None) -> None:
 
     from faster_whisper import WhisperModel
 
+    # 模型缓存目录：优先用配置的 MODEL_DIR，不存在则用项目目录下的 models/
+    model_dir = config.get("MODEL_DIR", "models")
+    if not os.path.isabs(model_dir):
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), model_dir)
+    os.makedirs(model_dir, exist_ok=True)
+
     _model = WhisperModel(
         model_name,
         device=device,
         compute_type=compute_type,
+        download_root=model_dir,
     )
     _loaded_model_name = model_name
-    print(f"[Whisper] 模型加载完成")
+    print(f"[Whisper] 模型加载完成 (缓存: {model_dir})")
 
 
 def transcribe_file(audio_path: str, language: str = None, prompt: str = None) -> str:
