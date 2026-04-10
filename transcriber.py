@@ -20,7 +20,7 @@ def _setup_cuda_path():
     """将 pip 安装的 NVIDIA CUDA 库路径添加到 DLL 搜索路径"""
     try:
         nvidia_base = os.path.join(
-            os.path.dirname(sys.executable), "Lib", "site-packages", "nvidia"
+            sys.prefix, "Lib", "site-packages", "nvidia"
         )
         if not os.path.isdir(nvidia_base):
             return
@@ -109,12 +109,42 @@ def load_model(model_name: str = None) -> None:
         model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), model_dir)
     os.makedirs(model_dir, exist_ok=True)
 
-    _model = WhisperModel(
-        model_name,
-        device=device,
-        compute_type=compute_type,
-        download_root=model_dir,
-    )
+    # 检查模型是否已缓存，未缓存时提示下载
+    model_repo = f"Systran/faster-whisper-{model_name}"
+    snapshot_dir = os.path.join(model_dir, "models--Systran--faster-whisper-" + model_name, "snapshots")
+    model_cached = False
+    if os.path.isdir(snapshot_dir):
+        for sub in os.listdir(snapshot_dir):
+            if os.path.isfile(os.path.join(snapshot_dir, sub, "model.bin")):
+                model_cached = True
+                break
+
+    if not model_cached:
+        size_map = {"tiny": "~75MB", "small": "~500MB", "medium": "~1.5GB", "large": "~3GB"}
+        est_size = size_map.get(model_name, "~1GB+")
+        print(f"[Whisper] 模型未缓存，需要从 HuggingFace 下载 (预计 {est_size})")
+        print(f"[Whisper] 下载中，请耐心等待... (首次下载较慢，后续会使用缓存)")
+
+    try:
+        _model = WhisperModel(
+            model_name,
+            device=device,
+            compute_type=compute_type,
+            download_root=model_dir,
+        )
+    except RuntimeError as e:
+        if device == "cuda" and ("cublas" in str(e).lower() or "cuda" in str(e).lower() or "dll" in str(e).lower()):
+            print(f"[Whisper] CUDA 加载失败: {e}")
+            print(f"[Whisper] 自动回退到 CPU 模式 (速度较慢但可正常工作)")
+            compute_type = "int8"
+            _model = WhisperModel(
+                model_name,
+                device="cpu",
+                compute_type=compute_type,
+                download_root=model_dir,
+            )
+        else:
+            raise
     _loaded_model_name = model_name
     print(f"[Whisper] 模型加载完成 (缓存: {model_dir})")
 

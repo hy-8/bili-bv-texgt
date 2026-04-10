@@ -1,81 +1,89 @@
 # bili2text-new 📺
 
-B站视频下载与文案提取工具 - 根据BV号下载视频，提取音频，自动转写为文字。
+B站视频下载与文案提取工具 — 输入BV号，自动下载视频并转写为文字文案。
 
-## 功能 🚀
+## 功能特性
 
-- 🎥 **下载视频** - 根据 BV 号下载 B 站视频，支持多 P 分段下载
-- 🎵 **提取音频** - 自动从视频中提取音频
-- 💬 **音频分割** - 将长音频按时长分割，提高转录效率
-- 🤖 **语音转文字** - 使用 faster-whisper 将语音转换为文字
-- 📝 **保存文案** - 转录结果自动保存为文本文件
+- 🎥 **视频下载** — 基于 yt-dlp，稳定可靠，支持多P分段下载
+- 📝 **字幕直取** — 有CC/AI字幕的视频可直接获取文案，无需下载和识别
+- 🎵 **音频提取** — ffmpeg 自动从视频中提取音频
+- ✂️ **音频分割** — 长音频按时长切片，逐段转录
+- 🤖 **语音转文字** — faster-whisper 离线识别，支持 GPU 加速
+- 💾 **自动保存** — 转录结果自动保存为文本文件
 
-## 对比原版的优势 ✨
+## 对比原版
 
 | 特性 | bili2text (原版) | bili2text-new |
 |------|-----------------|---------------|
 | 下载工具 | you-get（经常失效） | yt-dlp（活跃维护） |
-| 语音识别 | openai-whisper（需 PyTorch，巨大） | faster-whisper（轻量快速） |
-| 分段下载 | 不支持 | ✅ 支持 |
-| 环境管理 | 无 | ✅ .env 虚拟环境 |
-| 依赖数量 | 40+ | 2 个核心包 + ffmpeg |
-| 安装难度 | 高 | 低 |
+| 语音识别 | openai-whisper（需 PyTorch，体积大） | faster-whisper（轻量快速） |
+| 字幕直取 | ❌ | ✅ B站API直接获取 |
+| 多P分段 | ❌ | ✅ 支持 |
+| GPU 加速 | 需完整 CUDA Toolkit | pip 安装 nvidia 包即可 |
+| 依赖数量 | 40+ | 2 核心包 + ffmpeg |
 
-## 安装 📦
+## 快速开始
 
-### 1. 前置要求
+### 1. 安装前置
 
-- Python 3.10+
-- ffmpeg（必须）
+- **Python 3.10+**
+- **ffmpeg**（必须）
 
 安装 ffmpeg：
 
 ```bash
-# Windows (推荐用 scoop)
+# Windows（推荐 scoop）
 scoop install ffmpeg
-# 或者用 winget
+# 或 winget
 winget install ffmpeg
 
-# Mac
+# macOS
 brew install ffmpeg
 
 # Linux
 sudo apt install ffmpeg
 ```
 
-### 2. 克隆项目
+### 2. 克隆并安装
 
 ```bash
-git clone <repo-url>
-cd bili2text-new
-```
+git clone https://gitee.com/sheng-20/bili-text.git
+cd bili-text
 
-### 3. 创建虚拟环境并安装依赖
-
-```bash
 # 创建虚拟环境
 python -m venv .env
 
 # 激活虚拟环境
 # Windows:
 .env\Scripts\activate
-# Mac/Linux:
+# macOS/Linux:
 source .env/bin/activate
 
 # 安装依赖
 pip install -r requirements.txt
 ```
 
-## 使用方法 📘
+### 3. 运行
 
-### 交互模式（推荐新手）
+**Windows 一键启动：** 双击 `start.bat`
+
+**或手动运行：**
 
 ```bash
-# 激活虚拟环境后
 python main.py
 ```
 
-按提示输入 BV 号即可。
+## 使用方法
+
+### 交互模式（推荐）
+
+```bash
+python main.py
+```
+
+按提示输入BV号或链接即可。程序会自动：
+1. 检查视频是否有字幕（有则直接获取，无需下载）
+2. 无字幕则下载视频 → 提取音频 → 语音识别
 
 ### 命令行模式
 
@@ -83,105 +91,163 @@ python main.py
 # 完整流程：下载 → 转录
 python main.py BV1xx411c7mD
 
-# 只下载第 1P
-python main.py BV1xx411c7mD --page 1
+# 直接获取字幕（不下载视频，速度最快）
+python main.py --subtitle BV1xx411c7mD
 
-# 下载第 1 到 3 P
-python main.py BV1xx411c7mD --page 1-3
-
-# 查看视频信息（不下载）
+# 查看视频信息
 python main.py --info BV1xx411c7mD
 
 # 只下载视频，不转录
 python main.py --download BV1xx411c7mD
 
-# 使用 medium 模型（更准确但更慢）
+# 下载指定分P
+python main.py BV1xx411c7mD --page 1
+python main.py BV1xx411c7mD --page 1-3
+python main.py BV1xx411c7mD --page 1,3,5
+
+# 使用 medium 模型（更准确）
 python main.py BV1xx411c7mD --model medium
 
-# 只转录已有视频
+# 转录已有视频目录
 python main.py --transcribe downloads/video/BV1xx411c7mD
 
-# 检查环境
+# 自定义提示词
+python main.py BV1xx411c7mD --prompt "以下是关于机器学习的中文演讲。"
+
+# 检查环境依赖
 python main.py --check
 ```
 
-### 分段下载说明
+## 配置
 
-如果视频有多个分P（多集），工具会：
-1. 自动检测分P数量
-2. 逐个下载每个分P
-3. 每个分P独立转录
-4. 分别保存文案文件
-
-## 配置 ⚙️
-
-编辑 `config.env` 文件进行配置：
+编辑 `config.env` 文件自定义配置：
 
 ```env
-# Whisper 模型大小
+# Whisper 模型大小 (tiny/small/medium/large)
 WHISPER_MODEL=small
 
 # 计算设备 (auto/cpu/cuda)
 WHISPER_DEVICE=auto
 
+# 计算精度 (auto/float16/int8)
+WHISPER_COMPUTE_TYPE=auto
+
 # 音频分割长度（秒）
 SLICE_LENGTH=45
 
-# B站 Cookie（可选，下载更高清视频）
-# BILIBILI_COOKIE=your_cookie_here
+# B站 Cookie（可选，用于下载更高清视频）
+# BILIBILI_COOKIE=SESSDATA=你的值
 ```
 
 ### Whisper 模型选择
 
-| 模型 | 大小 | 速度 | 准确度 | 显存需求 |
-|------|------|------|--------|----------|
-| tiny | 39M | ⚡⚡⚡ | ★★ | ~1GB |
-| base | 74M | ⚡⚡⚡ | ★★★ | ~1GB |
-| small | 244M | ⚡⚡ | ★★★★ | ~2GB |
-| medium | 769M | ⚡ | ★★★★★ | ~5GB |
-| large | 1550M | 🐌 | ★★★★★+ | ~10GB |
+| 模型 | 参数量 | 速度 | 中文准确度 | 显存需求 |
+|------|--------|------|-----------|----------|
+| tiny | 39M | ⚡⚡⚡⚡ | ★★ | ~1GB |
+| small | 244M | ⚡⚡⚡ | ★★★★ | ~2GB |
+| medium | 769M | ⚡⚡ | ★★★★★ | ~5GB |
+| large | 1550M | ⚡ | ★★★★★+ | ~10GB |
 
-推荐：日常使用 `small`，追求准确度用 `medium`。
+**推荐：** 日常用 `small`，追求准确度用 `medium`，`tiny` 仅用于快速测试。
 
-## 项目结构 📁
+## GPU 加速
+
+程序会自动检测 NVIDIA GPU 并使用 CUDA 加速，无需手动安装 CUDA Toolkit。
+
+如需 GPU 支持，安装额外的 nvidia 包：
+
+```bash
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+```
+
+程序会在启动时自动：
+1. 检测 pip 安装的 NVIDIA CUDA 库
+2. 将 DLL 路径加入搜索路径
+3. 如果 CUDA 加载失败，自动回退到 CPU 模式
+
+## Cookie 导出
+
+部分高清视频需要登录才能下载。导出 Cookie 的方法：
+
+### 方法一：浏览器插件（推荐）
+
+1. 安装 Chrome 插件 [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+2. 打开 bilibili.com 并登录
+3. 点击插件图标，导出 cookies
+4. 保存为 `cookies.txt` 放到项目根目录
+
+### 方法二：辅助脚本
+
+双击 `export_cookies.bat`，会尝试从浏览器自动提取 Cookie。
+
+### 方法三：手动填写
+
+1. 打开 bilibili.com 并登录
+2. 按 F12 → Application → Cookies → `https://www.bilibili.com`
+3. 找到 `SESSDATA` 的值
+4. 填入 `config.env`：`BILIBILI_COOKIE=SESSDATA=你的值`
+
+**优先级：** `cookies.txt` 文件 > `config.env` 中的 `BILIBILI_COOKIE`
+
+## 项目结构
+
+详细结构说明见 [STRUCTURE.md](STRUCTURE.md)。
 
 ```
 bili2text-new/
-├── .env/                  # Python 虚拟环境
-├── config.env             # 配置文件
-├── config.py              # 配置加载
-├── main.py                # 主程序入口
-├── downloader.py          # 视频下载模块 (yt-dlp)
-├── audio_processor.py     # 音频处理模块 (ffmpeg)
-├── transcriber.py         # 语音转文字模块 (faster-whisper)
-├── requirements.txt       # 依赖列表
-├── .gitignore
-└── README.md
-├── downloads/             # 下载目录（自动创建）
-│   ├── video/             # 视频文件
-│   ├── audio/             # 提取的音频
-│   └── temp/              # 临时文件
-└── outputs/               # 文案输出（自动创建）
+├── main.py                 # 主程序入口
+├── config.py               # 配置加载
+├── config.env              # 用户配置
+├── downloader.py           # 视频下载 (yt-dlp)
+├── audio_processor.py      # 音频处理 (ffmpeg)
+├── transcriber.py          # 语音识别 (faster-whisper)
+├── subtitle_fetcher.py     # 字幕获取 (B站API)
+├── requirements.txt        # 依赖列表
+├── start.bat               # Windows 启动脚本
+├── export_cookies.bat      # Cookie 导出脚本
+├── downloads/              # 下载目录
+│   ├── video/              #   视频文件
+│   ├── audio/              #   提取的音频
+│   └── temp/               #   临时切片
+├── models/                 # Whisper 模型缓存
+└── outputs/                # 文案输出
 ```
 
-## 常见问题 ❓
+## 常见问题
 
-### Q: 下载失败怎么办？
-A: yt-dlp 会自动处理大部分情况。如果下载高清视频失败，可以尝试在 `config.env` 中设置 BILIBILI_COOKIE。
+### 下载失败，提示需要会员？
 
-### Q: 转录速度太慢？
-A: 尝试使用更小的模型（tiny/base），或确保有 NVIDIA GPU 并安装 CUDA。
+需要导出浏览器 Cookie 后重试，参见上方 [Cookie 导出](#cookie-导出) 部分。
 
-### Q: ffmpeg 未找到？
-A: 确保已安装 ffmpeg 并添加到系统 PATH。运行 `python main.py --check` 检查环境。
+### RuntimeError: Library cublas64_12.dll is not found？
 
-### Q: 中文转录效果不好？
-A: 使用 `medium` 或 `large` 模型可以显著提高中文转录准确度。
+这是 CUDA DLL 路径问题。确保安装了 `nvidia-cublas-cu12` 和 `nvidia-cudnn-cu12`：
 
-## 许可证 📄
+```bash
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+```
+
+程序已内置自动回退机制，CUDA 加载失败会自动切换到 CPU 模式。
+
+### 转录速度太慢？
+
+- 有 NVIDIA GPU 的确保安装了 nvidia 包（见上方 GPU 加速部分）
+- 没有GPU的使用 `tiny` 或 `base` 模型
+- 缩短音频分割长度（如 `SLICE_LENGTH=30`）对速度帮助不大
+
+### 中文转录效果不好？
+
+- 升级模型大小：`small` → `medium` 效果提升明显
+- 使用 `--prompt` 参数提供上下文提示，如 `--prompt "以下是关于烹饪的中文视频"`
+
+### ffmpeg 未找到？
+
+确保已安装 ffmpeg 并添加到系统 PATH，或运行 `python main.py --check` 检查环境。
+
+## 许可证
 
 MIT License
 
-## 使用须知 🖥️
+## 使用须知
 
 **用户在使用本工具时，必须遵守用户所在地区的相关版权法律和规定。请确保您有权利下载和转换的视频内容，尊重创作者的劳动成果。**
