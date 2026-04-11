@@ -26,3 +26,6 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# WorkBuddy
+.workbuddy/

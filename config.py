@@ -15,7 +15,7 @@ DEFAULT_CONFIG = {
     "AUDIO_DIR": os.path.join(BASE_DIR, "downloads", "audio"),
     "OUTPUT_DIR": os.path.join(BASE_DIR, "outputs"),
     "TEMP_DIR": os.path.join(BASE_DIR, "downloads", "temp"),
-    "WHISPER_MODEL": "small",
+    "WHISPER_MODEL": "medium",
     "WHISPER_DEVICE": "auto",
     "WHISPER_COMPUTE_TYPE": "auto",
     "SLICE_LENGTH": "45",
