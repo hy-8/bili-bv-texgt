@@ -173,9 +173,11 @@ def cmd_full(args):
     prompt = args.prompt or f"以下是普通话的句子。这是一个关于{info['title']}的视频。"
     results = []
 
+    video_dirs = _unique_paths(video_dirs)
+    bv = _normalize_bv(args.bv)
+
     for idx, video_dir in enumerate(video_dirs):
-        bv = _normalize_bv(args.bv)
-        output_name = f"{bv}" + (f"_P{idx+1}" if len(video_dirs) > 1 else "")
+        output_name = bv if len(video_dirs) == 1 else f"{bv}_part{idx+1}"
 
         print(f"\n--- 处理 {idx+1}/{len(video_dirs)}: {output_name} ---")
 
@@ -213,6 +215,19 @@ def parse_pages(pages_str: str) -> list:
         else:
             pages.append(int(part))
     return pages
+
+
+def _unique_paths(paths: list) -> list:
+    """路径去重并保持原顺序，避免多P下载返回同一目录时重复处理。"""
+    unique = []
+    seen = set()
+    for path in paths:
+        key = os.path.abspath(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
 
 
 def main():
@@ -456,8 +471,10 @@ def interactive_mode():
         prompt = f"以下是普通话的句子。这是一个关于{info['title']}的视频。"
         results = []
 
+        video_dirs = _unique_paths(video_dirs)
+
         for idx, video_dir in enumerate(video_dirs):
-            output_name = f"{bv_clean}" + (f"_P{idx+1}" if len(video_dirs) > 1 else "")
+            output_name = bv_clean if len(video_dirs) == 1 else f"{bv_clean}_part{idx+1}"
             print(f"\n--- 处理 {idx+1}/{len(video_dirs)}: {output_name} ---")
 
             slice_dir = process_audio(video_dir, output_name)

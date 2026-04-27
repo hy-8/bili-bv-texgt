@@ -66,22 +66,33 @@ def probe_audio_streams(file_path: str) -> dict:
     }
 
 
-def find_audio_source(video_dir: str) -> str:
+def _media_sort_key(file_path: str):
+    """按分P序号和文件名排序，保证多P视频按 p01/p02 或 1/2 顺序合并。"""
+    import re
+
+    name = os.path.basename(file_path)
+    match = re.search(r"(?:^|[\s_-])[pP]?(\d{1,4})(?:[\s._-]|$)", name)
+    if match:
+        return (int(match.group(1)), name)
+    return (10**9, name)
+
+
+def find_audio_sources(video_dir: str) -> list:
     """
-    在下载目录中查找包含音频的媒体文件
+    在下载目录中查找所有包含音频的媒体文件
 
     Args:
         video_dir: 视频下载目录
 
     Returns:
-        第一个包含音频流的文件路径
+        包含音频流的文件路径列表
     """
     if not os.path.isdir(video_dir):
         # 可能是直接文件路径
         if os.path.isfile(video_dir) and video_dir.endswith(".mp4"):
             streams = probe_audio_streams(video_dir)
             if streams["has_audio"]:
-                return video_dir
+                return [video_dir]
         raise FileNotFoundError(f"目录或文件不存在: {video_dir}")
 
     # 支持的媒体格式
@@ -105,11 +116,16 @@ def find_audio_source(video_dir: str) -> str:
             audio_video.append(fp)
 
     if audio_only:
-        return audio_only[0]
+        return sorted(audio_only, key=_media_sort_key)
     if audio_video:
-        return audio_video[0]
+        return sorted(audio_video, key=_media_sort_key)
 
     raise FileNotFoundError(f"未找到含音频流的文件: {video_dir}")
+
+
+def find_audio_source(video_dir: str) -> str:
+    """在下载目录中查找第一个包含音频的媒体文件。"""
+    return find_audio_sources(video_dir)[0]
 
 
 def extract_audio(video_dir: str, output_name: str = None) -> str:
@@ -129,8 +145,10 @@ def extract_audio(video_dir: str, output_name: str = None) -> str:
     audio_dir = config["AUDIO_DIR"]
     os.makedirs(audio_dir, exist_ok=True)
 
-    source = find_audio_source(video_dir)
-    print(f"[音频] 源文件: {source}")
+    sources = find_audio_sources(video_dir)
+    print(f"[音频] 共找到 {len(sources)} 个音频源")
+    for idx, source in enumerate(sources, start=1):
+        print(f"  P{idx}: {source}")
 
     if output_name is None:
         output_name = time.strftime("%Y%m%d_%H%M%S")
@@ -138,14 +156,36 @@ def extract_audio(video_dir: str, output_name: str = None) -> str:
     output_path = os.path.join(audio_dir, f"{output_name}.mp3")
 
     print(f"[音频] 正在提取音频到: {output_path}")
-    _run_ffmpeg([
-        "-y",
-        "-i", source,
-        "-vn",                    # 不要视频
-        "-acodec", "libmp3lame",  # MP3 编码
-        "-q:a", "2",              # 高质量
-        output_path,
-    ])
+    if len(sources) == 1:
+        _run_ffmpeg([
+            "-y",
+            "-i", sources[0],
+            "-vn",                    # 不要视频
+            "-acodec", "libmp3lame",  # MP3 编码
+            "-q:a", "2",              # 高质量
+            output_path,
+        ])
+    else:
+        concat_list = os.path.join(config["TEMP_DIR"], f"{output_name}_concat.txt")
+        os.makedirs(os.path.dirname(concat_list), exist_ok=True)
+        with open(concat_list, "w", encoding="utf-8") as f:
+            for source in sources:
+                safe_path = os.path.abspath(source).replace("\\", "/").replace("'", "'\\''")
+                f.write(f"file '{safe_path}'\n")
+        try:
+            _run_ffmpeg([
+                "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", concat_list,
+                "-vn",
+                "-acodec", "libmp3lame",
+                "-q:a", "2",
+                output_path,
+            ])
+        finally:
+            if os.path.exists(concat_list):
+                os.remove(concat_list)
     print(f"[音频] 提取完成")
 
     return output_path
@@ -173,6 +213,8 @@ def split_audio(mp3_path: str, folder_name: str = None, slice_length: int = None
 
     target_dir = os.path.join(config["TEMP_DIR"], folder_name, "slices")
     os.makedirs(target_dir, exist_ok=True)
+    for old_file in glob.glob(os.path.join(target_dir, "*.mp3")):
+        os.remove(old_file)
 
     # 临时文件名模板
     temp_pattern = os.path.join(target_dir, "%03d.mp3")
