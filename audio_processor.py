@@ -66,6 +66,36 @@ def probe_audio_streams(file_path: str) -> dict:
     }
 
 
+def _is_decodable_audio(file_path: str) -> bool:
+    """Return True when ffmpeg can decode at least one audio stream."""
+    if not os.path.isfile(file_path) or os.path.getsize(file_path) <= 0:
+        return False
+
+    result = _run_ffmpeg([
+        "-v", "error",
+        "-i", file_path,
+        "-map", "0:a:0",
+        "-f", "null",
+        "-",
+    ], check=False)
+    return result.returncode == 0
+
+
+def _rebuild_slice(mp3_path: str, output_path: str, start_time: int, slice_length: int) -> None:
+    """Rebuild one slice directly from the source audio."""
+    _run_ffmpeg([
+        "-y",
+        "-i", mp3_path,
+        "-ss", str(start_time),
+        "-t", str(slice_length),
+        "-vn",
+        "-map", "0:a:0",
+        "-acodec", "libmp3lame",
+        "-q:a", "0",
+        output_path,
+    ])
+
+
 def _media_sort_key(file_path: str):
     """按分P序号和文件名排序，保证多P视频按 p01/p02 或 1/2 顺序合并。"""
     import re
@@ -87,16 +117,17 @@ def find_audio_sources(video_dir: str) -> list:
     Returns:
         包含音频流的文件路径列表
     """
+    # 支持的媒体格式
+    media_exts = (".mp4", ".flv", ".mkv", ".avi", ".m4a", ".aac", ".mp3", ".wav", ".webm", ".mov", ".wmv", ".ts")
+
     if not os.path.isdir(video_dir):
         # 可能是直接文件路径
-        if os.path.isfile(video_dir) and video_dir.endswith(".mp4"):
+        if os.path.isfile(video_dir) and video_dir.lower().endswith(media_exts):
             streams = probe_audio_streams(video_dir)
             if streams["has_audio"]:
                 return [video_dir]
         raise FileNotFoundError(f"目录或文件不存在: {video_dir}")
 
-    # 支持的媒体格式
-    media_exts = (".mp4", ".flv", ".mkv", ".avi", ".m4a", ".aac", ".mp3", ".wav", ".webm")
     media_files = []
     for file in os.listdir(video_dir):
         if file.lower().endswith(media_exts):
@@ -235,6 +266,11 @@ def split_audio(mp3_path: str, folder_name: str = None, slice_length: int = None
         final_path = os.path.join(target_dir, f"{idx}.mp3")
         if os.path.abspath(fp) != os.path.abspath(final_path):
             os.replace(fp, final_path)
+        if not _is_decodable_audio(final_path):
+            print(f"[Split] Rebuilding invalid slice: {idx}.mp3")
+            _rebuild_slice(mp3_path, final_path, (idx - 1) * slice_length, slice_length)
+            if not _is_decodable_audio(final_path):
+                raise RuntimeError(f"Failed to rebuild invalid audio slice: {final_path}")
 
     print(f"[分割] 分割完成，共 {len(generated)} 段")
     return target_dir

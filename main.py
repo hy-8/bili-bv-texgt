@@ -115,12 +115,55 @@ def cmd_subtitle(args):
     print(f"{'='*50}")
 
 
+def cmd_local(args):
+    """处理本地视频文件"""
+    from local_video import process_local_video
+
+    video_path = args.local
+    model_name = args.model
+    language = args.lang
+
+    if not os.path.isfile(video_path):
+        print(f"[错误] 视频文件不存在: {video_path}")
+        sys.exit(1)
+
+    try:
+        output_path = process_local_video(
+            video_path,
+            model_name=model_name,
+            language=language,
+        )
+        if output_path:
+            print(f"\n{'='*50}")
+            print(f"文案已保存到: {output_path}")
+
+            with open(output_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                if content.strip():
+                    print(f"\n--- 文案预览 ---")
+                    print(content[:500])
+                    if len(content) > 500:
+                        print("...(更多内容请查看文件)")
+            print(f"{'='*50}")
+    except Exception as e:
+        print(f"[错误] {e}")
+        sys.exit(1)
+
+
 def cmd_full(args):
-    """完整流程：下载 → 提取音频 → 转录"""
+    """完整流程：自动识别 BV号/本地视频 → 提取文案"""
     from downloader import download_video, download_all_pages, get_video_info
     from audio_processor import process_audio
     from transcriber import load_model, transcribe_and_save
     from subtitle_fetcher import fetch_subtitles, save_subtitles
+
+    # 自动识别：检查输入是否为本地文件路径
+    bv_input = args.bv.strip('"').strip("'")
+    if os.path.isfile(bv_input):
+        print(f"[识别] 检测到本地视频文件，切换到本地处理流程")
+        args.local = bv_input
+        cmd_local(args)
+        return
 
     config = get_config()
 
@@ -192,6 +235,55 @@ def cmd_full(args):
     print(f"{'='*50}")
 
 
+def _interactive_local(video_path: str, cached_model=None):
+    """交互模式下处理本地视频"""
+    from local_video import process_local_video
+    from transcriber import load_model
+
+    video_name = os.path.basename(video_path)
+    print(f"\n[本地视频] {video_name}")
+
+    # 语言选择
+    print(f"\n语言提示（可选，回车=自动检测）:")
+    print(f"  1. 自动检测（默认）")
+    print(f"  2. 日语 (ja)")
+    print(f"  3. 英语 (en)")
+    print(f"  4. 中文 (zh)")
+    lang_choice = input("请选择 (1/2/3/4，回车=1): ").strip()
+    lang_map = {"2": "ja", "3": "en", "4": "zh"}
+    language = lang_map.get(lang_choice, None)
+
+    # 模型选择
+    model_input = input("\nWhisper 模型 (tiny/small/medium/large，回车=medium): ").strip()
+    model = model_input if model_input else "medium"
+
+    # 预加载模型
+    if cached_model != model:
+        load_model(model)
+        cached_model = model
+
+    # 处理
+    try:
+        output_path = process_local_video(
+            video_path,
+            model_name=model,
+            language=language,
+        )
+        if output_path:
+            print(f"\n{'='*50}")
+            print(f"文案已保存到: {output_path}")
+            with open(output_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                if content.strip():
+                    print(f"\n--- 文案预览 ---")
+                    print(content[:500])
+                    if len(content) > 500:
+                        print("...(更多内容请查看文件)")
+            print(f"{'='*50}")
+    except Exception as e:
+        print(f"[错误] {e}")
+
+
 def _normalize_bv(bv_input: str) -> str:
     import re
     bv_input = bv_input.strip()
@@ -244,6 +336,8 @@ def main():
   python main.py --subtitle BV1xx411c7mD   # 直接获取字幕（不下载视频）
   python main.py --download BV1xx411c7mD   # 仅下载视频
   python main.py --transcribe ./downloads/video/BVxxx  # 仅转录
+  python main.py --local "C:/videos/my_video.mp4"       # 处理本地视频
+  python main.py --local video.mp4 --lang ja            # 日语视频翻译
         """,
     )
 
@@ -252,6 +346,8 @@ def main():
     parser.add_argument("--download", action="store_true", help="仅下载视频（不转录）")
     parser.add_argument("--transcribe", metavar="VIDEO_DIR", help="仅转录指定目录的视频")
     parser.add_argument("--subtitle", action="store_true", help="直接获取视频字幕（不下载视频）")
+    parser.add_argument("--local", "-l", metavar="VIDEO_PATH", help="处理本地视频文件（提取文案并翻译）")
+    parser.add_argument("--lang", type=str, help="语言提示: zh(中文) / ja(日语) / en(英语)，默认自动检测")
     parser.add_argument("--page", type=str, help="指定下载的分P，如 '1' 或 '1,3' 或 '1-3'")
     parser.add_argument("--model", type=str, help="Whisper 模型大小 (tiny/small/medium/large)")
     parser.add_argument("--prompt", type=str, help="Whisper 转录提示词")
@@ -308,6 +404,11 @@ def main():
         cmd_subtitle(args)
         return
 
+    # 处理本地视频
+    if args.local:
+        cmd_local(args)
+        return
+
     # 完整流程
     if not args.bv:
         # 交互模式
@@ -320,9 +421,10 @@ def main():
 
 
 def interactive_mode():
-    """交互式模式（支持连续处理多个BV号）"""
+    """交互式模式（支持连续处理多个BV号，也支持本地视频路径）"""
     print("=" * 50)
     print("  bili2text-new - B站视频下载与文案提取")
+    print("  支持: BV号 / B站链接 / 本地视频路径")
     print("  输入 q 退出")
     print("=" * 50)
 
@@ -336,18 +438,34 @@ def interactive_mode():
     from subtitle_fetcher import fetch_subtitles, save_subtitles
     from audio_processor import process_audio
     from transcriber import load_model, transcribe_and_save
+    from local_video import process_local_video
 
     config = get_config()
     cached_model = None  # 缓存已加载的模型名，避免重复加载
 
     while True:
-        bv = input("\n请输入BV号或B站视频链接（输入 q 退出）: ").strip()
-        if not bv:
-            print("[错误] BV号不能为空")
+        user_input = input("\n请输入BV号/链接/本地视频路径（输入 q 退出）: ").strip()
+        if not user_input:
+            print("[错误] 输入不能为空")
             continue
-        if bv.lower() == "q":
+        if user_input.lower() == "q":
             print("再见！")
             break
+
+        # 检测是否为本地文件路径（先去引号）
+        cleaned = user_input.strip('"').strip("'")
+        if os.path.isfile(cleaned):
+            _interactive_local(cleaned, cached_model)
+            continue
+
+        # 检测是否看起来像本地路径但文件不存在（有盘符或以 \ 开头）
+        has_drive = len(cleaned) >= 2 and cleaned[0].isalpha() and cleaned[1] == ":"
+        if has_drive or cleaned.startswith("\\"):
+            print(f"[错误] 文件不存在: {cleaned}")
+            continue
+
+        # 以下为 BV 号 / B站链接流程
+        bv = user_input
 
         # 查看信息
         try:
