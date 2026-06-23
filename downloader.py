@@ -70,8 +70,13 @@ def _build_ydl_opts(output_dir: str, cookie: str = None) -> dict:
         # 进度钩子
         "progress_hooks": [_download_progress_hook],
         # 自动重试
-        "retries": 3,
-        "fragment_retries": 3,
+        "retries": 5,
+        "fragment_retries": 10,
+        # 避免分片文件残留导致校验失败
+        "nopart": True,
+        # B站限速时自动等待重试
+        "sleep_interval": 2,
+        "max_sleep_interval": 5,
     }
 
     # 告诉 yt-dlp ffmpeg 在哪里

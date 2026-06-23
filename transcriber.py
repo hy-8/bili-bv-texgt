@@ -149,6 +149,33 @@ def load_model(model_name: str = None) -> None:
     print(f"[Whisper] 模型加载完成 (缓存: {model_dir})")
 
 
+def _ensure_decodable_audio(audio_path: str) -> None:
+    """Fail early when a slice has no usable audio stream."""
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"Audio file does not exist: {audio_path}")
+    if os.path.getsize(audio_path) <= 0:
+        raise RuntimeError(f"Audio file is empty: {audio_path}")
+
+    try:
+        import av
+
+        container = av.open(audio_path)
+        try:
+            if not list(container.streams.audio):
+                raise RuntimeError(f"Audio file has no audio stream: {audio_path}")
+            frames = container.decode(audio=0)
+            try:
+                next(frames)
+            except StopIteration as exc:
+                raise RuntimeError(f"Audio file has no decodable audio frames: {audio_path}") from exc
+        finally:
+            container.close()
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"Audio file is not decodable: {audio_path} ({exc})") from exc
+
+
 def transcribe_file(audio_path: str, language: str = None, prompt: str = None) -> str:
     """
     转录单个音频文件
@@ -161,6 +188,8 @@ def transcribe_file(audio_path: str, language: str = None, prompt: str = None) -
     Returns:
         转录文本
     """
+    _ensure_decodable_audio(audio_path)
+
     if _model is None:
         load_model()
 

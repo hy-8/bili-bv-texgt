@@ -32,3 +32,6 @@ desktop.ini
 
 # 配置文件（含 API Key，不提交）
 config.env
+
+# Claude Code 会话数据
+.claude/
